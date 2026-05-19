@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Adit - Penyelamat Harta Karun</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: linear-gradient(145deg, #0a2f3a 0%, #0a1f2a 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', 'Courier New', monospace;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .game-container {
+            background: #2b4b2f;
+            padding: 20px 20px 24px;
+            border-radius: 64px 64px 48px 48px;
+            box-shadow: 0 25px 35px rgba(0, 0, 0, 0.5), inset 0 1px 4px rgba(255, 255, 255, 0.3);
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 28px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+            cursor: pointer;
+            background-color: #87CEEB;
+        }
+
+        .info-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin: 20px 25px 0 25px;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .score-box, .best-box {
+            background: #1e2a1c;
+            padding: 10px 24px;
+            border-radius: 60px;
+            color: #f9e7b3;
+            font-weight: bold;
+            font-size: 1.6rem;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 0 #4a2e1a;
+            box-shadow: inset 0 1px 3px #6b8c42, 0 5px 8px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(2px);
+        }
+
+        .score-box span, .best-box span {
+            font-size: 1rem;
+            display: inline-block;
+            margin-right: 10px;
+            background: #f7b05e;
+            padding: 4px 12px;
+            border-radius: 50px;
+            color: #2c1a0c;
+            text-shadow: none;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            margin-top: 20px;
+        }
+
+        button {
+            background: #ffcf4a;
+            border: none;
+            font-size: 2rem;
+            font-weight: bold;
+            padding: 8px 25px;
+            border-radius: 60px;
+            font-family: monospace;
+            font-weight: bold;
+            color: #3b2a1f;
+            box-shadow: 0 6px 0 #aa6f2c;
+            transition: 0.07s linear;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+
+        button:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #aa6f2c;
+        }
+
+        .restart-btn {
+            background: #e67e22;
+            color: white;
+            box-shadow: 0 6px 0 #b45f1b;
+            font-size: 1.3rem;
+            padding: 8px 28px;
+        }
+
+        .status {
+            font-size: 1.2rem;
+            background: #1e2722cc;
+            padding: 6px 20px;
+            border-radius: 40px;
+            text-align: center;
+            color: #f0e6a0;
+            font-weight: bold;
+            backdrop-filter: blur(4px);
+        }
+
+        @media (max-width: 550px) {
+            .score-box, .best-box {
+                padding: 5px 16px;
+                font-size: 1.2rem;
+            }
+            button {
+                font-size: 1.5rem;
+                padding: 6px 20px;
+            }
+            .info-panel {
+                margin: 15px 10px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+<div>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="700" height="400" style="width:100%; height:auto; max-width:700px; aspect-ratio:700/400"></canvas>
+        <div class="info-panel">
+            <div class="score-box"><span>🍎 SKOR</span> <span id="scoreValue">0</span></div>
+            <div class="best-box"><span>🏆 BEST</span> <span id="bestValue">0</span></div>
+            <div class="status" id="gameStatusText">✨ GERAKKAN ADIT ✨</div>
+        </div>
+        <div class="controls">
+            <button id="leftBtn">◀  KIRI</button>
+            <button id="rightBtn">KANAN  ▶</button>
+            <button id="restartBtn" class="restart-btn">🔄 ULANG</button>
+        </div>
+        <div style="text-align: center; margin-top: 16px; font-size: 0.8rem; color: #cdedb2;">
+            🌟 Adit si penjelajah — hindari batu bara, ambil koin & buah! 🌟
+        </div>
+    </div>
+</div>
+
+<script>
+    (function(){
+        // ---------- CANVAS ----------
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // ukuran canvas fix
+        const CW = 700;
+        const CH = 400;
+        canvas.width = CW;
+        canvas.height = CH;
+
+        // ---------- GAME STATE ----------
+        let gameRunning = true;
+        let score = 0;
+        let bestScore = 0;
+
+        // load best dari localStorage
+        try {
+            const savedBest = localStorage.getItem('aditBestScore');
+            if(savedBest && !isNaN(parseInt(savedBest))) {
+                bestScore = parseInt(savedBest);
+            }
+        } catch(e) { /* aman */ }
+
+        // update tampilan skor & best
+        const scoreSpan = document.getElementById('scoreValue');
+        const bestSpan = document.getElementById('bestValue');
+        const gameStatusSpan = document.getElementById('gameStatusText');
+
+        function updateUI() {
+            scoreSpan.innerText = score;
+            bestSpan.innerText = bestScore;
+        }
+
+        // ---------- OBJEK ADIT ----------
+        const ADIT_WIDTH = 38;
+        const ADIT_HEIGHT = 38;
+        let aditX = CW/2 - ADIT_WIDTH/2;
+        const aditY = CH - ADIT_HEIGHT - 12;  // posisi bawah
+        let aditSpeed = 6.4;
+
+        // ---------- FALLING OBJECTS ----------
+        let items = [];       // setiap item: { x, y, type, width, height }
+        const ITEM_SIZE = 32;    // ukuran standar kotak / item
+
+        // jenis item: 'coin', 'fruit', 'rock'
+        // efek: coin +5, fruit +10, rock => game over
+        const POINTS = { coin: 5, fruit: 10, rock: -999 };
+
+        // pengaturan spawn
+        let frameCounter = 0;
+        let spawnDelay = 38;       // makin kecil makin sering spawn
+        let baseSpawnDelay = 40;
+        let difficultyRamp = 0;
+
+        // animasi & efek visual
+        let gameOverFlash = false;
+        let flashTimer = 0;
+
+        // ---------- FUNGSI SPAWN ----------
+        function spawnItem() {
+            // tentukan tipe berdasarkan probabilitas (semakin tinggi skor, rock lebih sering? biar seru)
+            let r = Math.random();
+            let type = 'fruit';
+            // di awal lebih banyak buah/koin, seiring score naik batu lebih muncul
+            let rockChance = Math.min(0.45, 0.2 + (Math.floor(score / 180) * 0.05));
+            if(score > 300) rockChance = Math.min(0.55, rockChance);
+            
+            if(r < rockChance) {
+                type = 'rock';
+            } else if(r < rockChance + 0.4) {
+                type = 'coin';
+            } else {
+                type = 'fruit';
+            }
+            
+            // posisi acak dalam batas kanvas (perhatikan ukuran item)
+            let maxX = CW - ITEM_SIZE;
+            let posX = Math.random() * maxX;
+            if(posX < 0) posX = 0;
+            if(posX > maxX) posX = maxX;
+            
+            items.push({
+                x: posX,
+                y: -ITEM_SIZE,      // mulai dari atas
+                type: type,
+                width: ITEM_SIZE,
+                height: ITEM_SIZE
+            });
+        }
+
+        // ---------- GAME LOGIC UPDATE ----------
+        function updateGame() {
+            if(!gameRunning) return;
+
+            // 1. pergerakan item jatuh
+            let fallSpeed = 3.2 + Math.min(3.5, Math.floor(score / 280) * 0.7);
+            for(let i = 0; i < items.length; i++) {
+                items[i].y += fallSpeed;
+            }
+            
+            // 2. tabrakan dengan Adit & batas bawah (bawah dianggap hilang jika rock tidak kena, aman)
+            // Kita cek dari belakang karena bisa menghapus item
+            for(let i = items.length-1; i >= 0; i--) {
+                const item = items[i];
+                // tabrakan dengan Adit (bounding box)
+                if(item.y + item.height > aditY && item.y < aditY + ADIT_HEIGHT &&
+                   item.x + item.width > aditX && item.x < aditX + ADIT_WIDTH) {
+                    
+                    // tabrakan terjadi!
+                    if(item.type === 'rock') {
+                        // GAME OVER
+                        gameRunning = false;
+                        gameStatusSpan.innerText = '💀 GAME OVER - tekan ULANG 💀';
+                        gameOverFlash = true;
+                        flashTimer = 25;
+                        // update best score jika perlu
+                        if(score > bestScore) {
+                            bestScore = score;
+                            localStorage.setItem('aditBestScore', bestScore);
+                            updateUI();
+                        }
+                        return;   // langsung stop update, game over
+                    } 
+                    else if(item.type === 'coin') {
+                        score += POINTS.coin;
+                        // efek suara visual kecil (tidak pakai audio biar simple)
+                        updateUI();
+                        items.splice(i,1);
+                        // spawn bonus efek kecil (flash)
+                    } 
+                    else if(item.type === 'fruit') {
+                        score += POINTS.fruit;
+                        updateUI();
+                        items.splice(i,1);
+                    }
+                    continue;
+                }
+                // jika item y > canvas height (lewat bawah) hapus tanpa efek (hanya hilang)
+                if(item.y > CH) {
+                    items.splice(i,1);
+                }
+            }
+            
+            // jika game over karena batu di atas, stop proses lebih lanjut (supaya tidak spawn lagi)
+            if(!gameRunning) return;
+            
+            // 3. update skor terbaik ketika score bertambah (setiap perubahan)
+            if(score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('aditBestScore', bestScore);
+                updateUI();
+            }
+            
+            // 4. Dinamic difficulty: spawn semakin sering seiring score
+            let dynamicSpawn = Math.max(22, baseSpawnDelay - Math.floor(score / 130));
+            spawnDelay = dynamicSpawn;
+            
+            // 5. spawn item berdasarkan frameCounter
+            frameCounter++;
+            if(frameCounter >= spawnDelay) {
+                frameCounter = 0;
+                spawnItem();
+                // kadang spawn double jika score tinggi untuk tantangan
+                if(score > 250 && Math.random() < 0.3) {
+                    spawnItem();
+                }
+            }
+            
+            // update status teks setiap saat
+            gameStatusSpan.innerText = `🏃‍♂️ ADIT berlari | skor: ${score}`;
+        }
+
+        // ---------- GAMBAR SEMUA ELEMEN (dengan gaya imut) ----------
+        function draw() {
+            ctx.clearRect(0, 0, CW, CH);
+            
+            // --- langit & ground ---
+            const gradSky = ctx.createLinearGradient(0, 0, 0, CH);
+            gradSky.addColorStop(0, "#c6e9ff");
+            gradSky.addColorStop(1, "#e0f3fa");
+            ctx.fillStyle = gradSky;
+            ctx.fillRect(0, 0, CW, CH);
+            // rumput bawah
+            ctx.fillStyle = "#6b8c42";
+            ctx.fillRect(0, CH-32, CW, 32);
+            ctx.fillStyle = "#8cb06a";
+            for(let i=0;i<12;i++) {
+                ctx.beginPath();
+                ctx.moveTo(i*70, CH-34);
+                ctx.lineTo(i*70+35, CH-48);
+                ctx.lineTo(i*70+70, CH-34);
+                ctx.fill();
+            }
+            // garis tanah
+            ctx.fillStyle = "#c49a6c";
+            ctx.fillRect(0, CH-28, CW, 6);
+            
+            // ----- gambar item jatuh (koin, buah, batu) -----
+            for(let item of items) {
+                if(item.type === 'coin') {
+                    // koin emas
+                    ctx.save();
+                    ctx.shadowBlur = 6;
+                    ctx.shadowColor = "gold";
+                    ctx.fillStyle = "#FFD966";
+                    ctx.beginPath();
+                    ctx.ellipse(item.x+item.width/2, item.y+item.height/2, item.width/2.2, item.height/2.2, 0, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.fillStyle = "#D4AF37";
+                    ctx.beginPath();
+                    ctx.ellipse(item.x+item.width/2, item.y+item.height/2, item.width/3, item.height/3, 0, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.fillStyle = "#FFBF00";
+                    ctx.font = `bold ${ITEM_SIZE-8}px "Segoe UI"`;
+                    ctx.fillText("★", item.x+6, item.y+ITEM_SIZE-9);
+                    ctx.restore();
+                } 
+                else if(item.type === 'fruit') {
+                    // apel / buah segar
+                    ctx.save();
+                    ctx.shadowBlur = 4;
+                    ctx.shadowColor = "#b06530";
+                    ctx.fillStyle = "#E34234";
+                    ctx.beginPath();
+                    ctx.ellipse(item.x+item.width/2, item.y+item.height/2, item.width/2.3, item.height/2.3, 0, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.fillStyle = "#6B8E23";
+                    ctx.beginPath();
+                    ctx.moveTo(item.x+item.width/2+4, item.y+8);
+                    ctx.lineTo(item.x+item.width/2+12, item.y+2);
+                    ctx.lineTo(item.x+item.width/2+3, item.y+4);
+                    ctx.fill();
+                    ctx.fillStyle = "#F5DEB3";
+                    ctx.font = `bold ${ITEM_SIZE-6}px monospace`;
+                    ctx.fillText("🍎", item.x+5, item.y+ITEM_SIZE-7);
+                    ctx.restore();
+                } 
+                else if(item.type === 'rock') {
+                    // batu berbahaya
+                    ctx.save();
+                    ctx.shadowBlur = 5;
+                    ctx.shadowColor = "#4a4a4a";
+                    ctx.fillStyle = "#5A5E6C";
+                    ctx.beginPath();
+                    ctx.ellipse(item.x+item.width/2, item.y+item.height/2, item.width/2.4, item.height/2.4, 0, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.fillStyle = "#3E3F47";
+                    ctx.beginPath();
+                    ctx.ellipse(item.x+item.width/2-3, item.y+item.height/2-3, 5, 4, 0, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.fillStyle = "#2E2E2E";
+                    ctx.font = `${ITEM_SIZE-10}px monospace`;
+                    ctx.fillText("💀", item.x+7, item.y+ITEM_SIZE-8);
+                    ctx.restore();
+                }
+            }
+            
+            // ----- si ADIT (karakter utama) dengan topi petualang -----
+            ctx.save();
+            ctx.shadowBlur = 3;
+            ctx.shadowColor = "rgba(0,0,0,0.3)";
+            // badan & baju
+            ctx.fillStyle = "#F4C542";
+            ctx.beginPath();
+            ctx.roundRect(aditX, aditY, ADIT_WIDTH, ADIT_HEIGHT, 12);
+            ctx.fill();
+            // wajah
+            ctx.fillStyle = "#F7D9A0";
+            ctx.beginPath();
+            ctx.arc(aditX+ADIT_WIDTH/2, aditY+ADIT_HEIGHT*0.35, 11, 0, Math.PI*2);
+            ctx.fill();
+            // mata
+            ctx.fillStyle = "#2F2E2E";
+            ctx.beginPath();
+            ctx.arc(aditX+ADIT_WIDTH*0.33, aditY+ADIT_HEIGHT*0.32, 2.5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(aditX+ADIT_WIDTH*0.67, aditY+ADIT_HEIGHT*0.32, 2.5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = "white";
+            ctx.beginPath();
+            ctx.arc(aditX+ADIT_WIDTH*0.3, aditY+ADIT_HEIGHT*0.29, 1, 0, Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(aditX+ADIT_WIDTH*0.64, aditY+ADIT_HEIGHT*0.29, 1, 0, Math.PI*2);
+            ctx.fill();
+            // senyum
+            ctx.beginPath();
+            ctx.arc(aditX+ADIT_WIDTH/2, aditY+ADIT_HEIGHT*0.45, 6, 0.05, Math.PI - 0.05);
+            ctx.strokeStyle = "#5A3E1B";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            // topi
+            ctx.fillStyle = "#AF7F41";
+            ctx.beginPath();
+            ctx.ellipse(aditX+ADIT_WIDTH/2, aditY-6, 18, 10, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = "#CD7F32";
+            ctx.fillRect(aditX+ADIT_WIDTH/2-10, aditY-12, 20, 8);
+            ctx.fillStyle = "#E6B422";
+            ctx.font = "bold 17px monospace";
+            ctx.fillText("⚡", aditX+ADIT_WIDTH-12, aditY+12);
+            ctx.restore();
+            
+            // efek game over flash
+            if(gameOverFlash && flashTimer > 0) {
+                ctx.fillStyle = "rgba(180, 40, 40, 0.55)";
+                ctx.fillRect(0, 0, CW, CH);
+                flashTimer--;
+                if(flashTimer <= 0) gameOverFlash = false;
+            }
+            
+            // petunjuk gerak jika game berjalan
+            if(gameRunning) {
+                ctx.font = "bold 12px monospace";
+                ctx.fillStyle = "#2d4b1e";
+                ctx.shadowBlur = 0;
+                ctx.fillText("◀  ▶  geser Adit", 15, 35);
+            } else {
+                ctx.font = "bold 22monospace";
+                ctx.fillStyle = "#630000";
+                ctx.shadowBlur = 2;
+                ctx.fillText("☠️ GAME OVER ☠️", CW/2-100, CH/2-30);
+                ctx.font = "bold 14px monospace";
+                ctx.fillStyle = "#F5E5A0";
+                ctx.fillText("Klik tombol ULANG untuk bermain lagi", CW/2-138, CH/2+20);
+            }
+        }
+        
+        // roundRect utility
+        if (!CanvasRenderingContext2D.prototype.roundRect) {
+            CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+                if (w < 2 * r) r = w / 2;
+                if (h < 2 * r) r = h / 2;
+                this.moveTo(x+r, y);
+                this.lineTo(x+w-r, y);
+                this.quadraticCurveTo(x+w, y, x+w, y+r);
+                this.lineTo(x+w, y+h-r);
+                this.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+                this.lineTo(x+r, y+h);
+                this.quadraticCurveTo(x, y+h, x, y+h-r);
+                this.lineTo(x, y+r);
+                this.quadraticCurveTo(x, y, x+r, y);
+                return this;
+            };
+        }
+        
+        // ---------- GERAK ADIT (batasan canvas) ----------
+        function moveAdit(dx) {
+            if(!gameRunning) return;
+            let newX = aditX + dx;
+            if(newX >= 0 && newX + ADIT_WIDTH <= CW) {
+                aditX = newX;
+            }
+        }
+        
+        // ---------- RESET GAME ----------
+        function restartGame() {
+            gameRunning = true;
+            score = 0;
+            items = [];
+            aditX = CW/2 - ADIT_WIDTH/2;
+            frameCounter = 0;
+            spawnDelay = baseSpawnDelay;
+            gameOverFlash = false;
+            flashTimer = 0;
+            updateUI();
+            gameStatusSpan.innerText = "🏃‍♂️ ADIT berlari | skor: 0";
+            // sedikit kesan spawn awal
+            for(let i=0;i<2;i++) spawnItem();
+        }
+        
+        // ---------- EVENT LISTENER (keyboard + tombol) ----------
+        function handleKey(e) {
+            const key = e.key;
+            if(key === 'ArrowLeft') {
+                moveAdit(-aditSpeed);
+                e.preventDefault();
+            } else if(key === 'ArrowRight') {
+                moveAdit(aditSpeed);
+                e.preventDefault();
+            }
+        }
+        
+        // touch / mouse untuk tombol
+        document.getElementById('leftBtn').addEventListener('click', () => moveAdit(-aditSpeed));
+        document.getElementById('rightBtn').addEventListener('click', () => moveAdit(aditSpeed));
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            restartGame();
+        });
+        
+        window.addEventListener('keydown', handleKey);
+        // untuk mobile prevent default swipe 
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); });
+        
+        // optional: swipe sederhana (tambahan biar mobile enak)
+        let touchStartX = null;
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            e.preventDefault();
+        });
+        canvas.addEventListener('touchmove', (e) => {
+            if(!touchStartX) return;
+            let diff = e.touches[0].clientX - touchStartX;
+            if(Math.abs(diff) > 15) {
+                if(diff > 0) moveAdit(aditSpeed);
+                else moveAdit(-aditSpeed);
+                touchStartX = e.touches[0].clientX;
+            }
+            e.preventDefault();
+        });
+        canvas.addEventListener('touchend', () => { touchStartX = null; });
+        
+        // ---------- ANIMASI LOOP (requestFrame) ----------
+        function gameLoop() {
+            updateGame();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // inisialisasi spawn awal biar ramai
+        for(let i=0;i<3;i++) spawnItem();
+        updateUI();
+        gameLoop();
+    })();
+</script>
+</body>
+</html>
